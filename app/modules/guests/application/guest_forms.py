@@ -53,6 +53,7 @@ class LinkIn(BaseModel):
     former: bool = False
     other_is_parent: bool = False
     also_parent_id: Optional[int] = None
+    expected_parent_ids: Optional[list[int]] = Field(None, max_length=2)
     also_former_id: Optional[int] = None
 
 

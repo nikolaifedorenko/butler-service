@@ -88,6 +88,22 @@ def test_search_by_phone_digits(manager_client):
     assert g["id"] in [x["id"] for x in found]
 
 
+def test_guest_picker_identifies_namesakes_only_with_profile_access(manager_client, names_client):
+    last = "Тёзкин" + _uniq()
+    first = _guest(manager_client, last, middle_name="Иванович", phone="+79161234567", birth_date="1992-03-16")
+    second = _guest(manager_client, last, middle_name="Иванович", phone="+79161234568", birth_date="1995-02-14")
+    rows = manager_client.get(f"{API}/guests", params={"q": last, "details": 1}).json()
+    assert {x["id"]: (x["middle_name"], x["phone"], x["birth_date"]) for x in rows} == {
+        first["id"]: ("Иванович", "+7 916 123-45-67", "1992-03-16"),
+        second["id"]: ("Иванович", "+7 916 123-45-68", "1995-02-14"),
+    }
+    assert first["id"] in {x["id"] for x in manager_client.get(f"{API}/guests", params={"q": "16.03.1992"}).json()}
+    limited = names_client.get(f"{API}/guests", params={"q": last, "details": 1}).json()
+    assert {x["id"] for x in limited} == {first["id"], second["id"]}
+    assert all(x.get("phone") is None and x.get("birth_date") is None for x in limited)
+    assert names_client.get(f"{API}/guests", params={"q": "16.03.1992"}).json() == []
+
+
 def test_search_by_searchable_field_only(manager_role_client, manager_client):
     u = _uniq()
     for code, searchable in ((f"club{u}", True), (f"secret{u}", False)):

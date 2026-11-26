@@ -9055,8 +9055,20 @@
       },
       "GuestPickOut": {
         "additionalProperties": false,
-        "description": "Гость в подборе: без контактов и дат рождения.",
+        "description": "Гость в подборе. Телефон и дата рождения доступны с полным профилем.",
         "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
           "first_name": {
             "title": "First Name",
             "type": "string"
@@ -9072,6 +9084,17 @@
           "middle_name": {
             "title": "Middle Name",
             "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
           },
           "short": {
             "title": "Short",
@@ -10575,6 +10598,21 @@
               }
             ],
             "title": "Also Parent Id"
+          },
+          "expected_parent_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Parent Ids"
           },
           "former": {
             "default": false,
@@ -32638,6 +32676,16 @@
             "schema": {
               "default": false,
               "title": "Mine",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "details",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Details",
               "type": "boolean"
             }
           }

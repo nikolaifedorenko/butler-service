@@ -11,7 +11,7 @@ import {
   $, authContextIsCurrent, authContextSnapshot, pushOverlay, removeOverlay, state,
 } from '../core.js';
 import { paletteProviders } from '../registry.js';
-import { html, mount, render } from './html.js';
+import { html, mount, nothing, render } from './html.js';
 
 /* действия модулей: {id, title, hint, run, when?} — when() решает видимость по правам */
 let actions = [];
@@ -55,6 +55,7 @@ function providerItems() {
     icon: item.icon || provider.icon || 'search',
     title: item.title || item.short || String(item.id || ''),
     hint: item.hint || provider.hint || 'результат',
+    detail: item.detail,
     run: () => provider.activate(item),
   }));
 }
@@ -73,7 +74,9 @@ function paint() {
     <div class="palette-list" role="listbox">${list.length ? list.map((it, i) => html`
       <button class="palette-item${i === index ? ' active' : ''}" role="option" aria-selected=${i === index}
         @click=${() => pick(it)} @mousemove=${() => { if (index !== i) { index = i; paint(); } }}>
-        <span class="palette-item-title">${it.title}</span><span class="muted">${it.hint}</span>
+        <span class="palette-item-title">${it.title}
+          ${it.detail ? html`<small class="guest-pick-details muted">${it.detail}</small>` : nothing}
+        </span><span class="muted">${it.hint}</span>
       </button>`) : html`<div class="muted" style="padding:10px 12px">${searching ? 'ищем…' : 'ничего не найдено'}</div>`}
     </div></div>`, mount(box));
 }

@@ -100,6 +100,73 @@ test('семейное дерево открывает карточку друг
   expect(errors).toEqual([]);
 });
 
+test('карточка из шахматки открывает холст и сохраняет ребёнка с выбранным вторым родителем', async ({ page }) => {
+  const errors = watchErrors(page);
+  await login(page, 'admin');
+  const data = await page.evaluate(async () => {
+    const { api } = await import('/static/js/core.js');
+    const surname = 'Семья' + Date.now();
+    const create = body => api('/api/stays/guests', { method: 'POST', body });
+    const origin = await create({ last_name: surname, first_name: 'Марк' });
+    const first = await create({ last_name: surname, first_name: 'Ольга', middle_name: 'Петровна',
+      phone: '+7 916 123-45-67', birth_date: '1990-02-14' });
+    const second = await create({ last_name: surname, first_name: 'Ольга', middle_name: 'Петровна',
+      phone: '+7 916 123-45-68', birth_date: '1992-03-16' });
+    const child = await create({ last_name: surname, first_name: 'Софья' });
+    await api(`/api/stays/guests/${first.id}/links`, { method: 'POST', body: { kind: 'parent', guest_id: child.id } });
+    return { surname, origin: origin.id, first: first.id, second: second.id, child: child.id };
+  });
+  await open(page, 'stays');
+  const board = page.locator('#view-stays');
+  await board.locator('[data-stab=day]').click();
+  await board.locator('#sg-q').fill(data.surname);
+  await expect(board.locator(`[data-sg-guest="${data.second}"]`)).toContainText('Ольга Петровна');
+  await expect(board.locator(`[data-sg-guest="${data.second}"]`)).toContainText('16.03.1992');
+  await board.locator(`[data-sg-guest="${data.origin}"]`).click();
+  const drawer = page.locator('#drawer');
+  await drawer.getByRole('button', { name: 'Открыть семейное дерево' }).click();
+  const tree = page.getByRole('region', { name: 'Холст семейного дерева' });
+  await tree.locator(`[data-family-person="${data.origin}"]`).click();
+  await drawer.getByRole('button', { name: 'Редактировать связи' }).click();
+  const editor = page.locator('#modal');
+  await editor.locator('[data-ft-add=child]').click();
+  await editor.locator('[data-ft-q]').fill(data.surname);
+  await editor.locator(`[data-ft-pick="${data.child}"]`).click();
+  await expect(editor.locator('.ft-parents')).toContainText('Ольга Петровна');
+  await expect(editor.locator('[data-ft-second-q]')).toHaveCount(0);
+  await editor.getByRole('button', { name: 'Сохранить с двумя родителями' }).click();
+  await expect(editor.locator('.ft-tree')).toContainText('Софья');
+
+  await editor.locator('[data-ft-add=child]').click();
+  await editor.locator('[data-ft-child-mode=new]').click();
+  await editor.locator('[data-ft-last]').fill(data.surname);
+  await editor.locator('[data-ft-first]').fill('Данил');
+  await editor.locator('[data-ft-second-q]').fill(data.surname);
+  const namesake = editor.locator(`[data-ft-second-pick="${data.second}"]`);
+  await expect(namesake).toContainText('+7 916 123-45-68');
+  await expect(namesake).toContainText('16.03.1992');
+  await namesake.click();
+  await editor.getByRole('button', { name: 'Сохранить с двумя родителями' }).click();
+  await expect(editor.locator('.ft-tree')).toContainText('Данил');
+  const parents = await page.evaluate(async origin => {
+    const family = await (await fetch(`/api/stays/guests/${origin}/family`)).json();
+    const parents = name => {
+      const child = family.people.find(person => person.name.includes(name));
+      return family.parents.filter(([id]) => id === child.id).map(([, parent]) => parent).sort();
+    };
+    return { existing: parents('Софья'), added: parents('Данил') };
+  }, data.origin);
+  expect(parents.existing).toEqual([data.origin, data.first].sort());
+  expect(parents.added).toEqual([data.origin, data.second].sort());
+
+  await page.keyboard.press('Escape');
+  await drawer.getByRole('button', { name: 'К дереву' }).click();
+  await page.getByRole('button', { name: 'К шахматке' }).click();
+  await expect(board).toBeVisible();
+  await expect(board.locator('[data-stab=day]')).toHaveClass(/btn-primary/);
+  expect(errors).toEqual([]);
+});
+
 test('поиск гостя не принимает запоздавший ответ прежнего запроса', async ({ page }) => {
   await login(page, 'admin');
   const guestId = await page.evaluate(async () => {

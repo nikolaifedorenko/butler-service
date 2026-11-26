@@ -1,5 +1,7 @@
-import { $, api, toast } from '../core.js';
-import { html, nothing, render, svg } from '../ui/html.js';
+import { navigate, registerModule } from '../app.js';
+import { $, api, closeDrawer, loadGenerationFor, state, toast } from '../core.js';
+import { html, mount, nothing, render, svg } from '../ui/html.js';
+import { openGuestCard } from './stays_forms.js';
 import { FAMILY_CARD, FAMILY_UNIONS, familyLayout } from './stays_family_layout.js';
 
 const ZOOMS = [60, 80, 100, 120, 140, 160];
@@ -9,7 +11,7 @@ function initials(name) {
   return name.split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] || '').join('').toUpperCase();
 }
 
-export function mountFamilyCanvas(host, guest, { onBack, onPerson, isCurrent }) {
+export function mountFamilyCanvas(host, guest, { onBack, onPerson, isCurrent, backLabel = 'К списку гостей' }) {
   let zoomIndex = ZOOMS.indexOf(100);
   let diagram = null;
   let error = '';
@@ -75,7 +77,7 @@ export function mountFamilyCanvas(host, guest, { onBack, onPerson, isCurrent }) 
 
   const paint = () => render(html`
     <div class="family-canvas-top">
-      <button type="button" class="btn btn-sm" @click=${onBack}>← К списку гостей</button>
+      <button type="button" class="btn btn-sm" @click=${onBack}>← ${backLabel}</button>
       ${diagram ? html`<div class="family-canvas-tools">
         <button type="button" class="btn btn-sm btn-ghost" @click=${center}>К исходному гостю</button>
         <div class="family-canvas-zoom">
@@ -126,4 +128,44 @@ export function mountFamilyCanvas(host, guest, { onBack, onPerson, isCurrent }) 
   refresh();
   $('h2', host).focus({ preventScroll: true });
   return refresh;
+}
+
+export function mountGuestFamily(host, guest, { isCurrent, onBack, onChanged, backLabel }) {
+  let selection = 0;
+  const refresh = mountFamilyCanvas(host, guest, {
+    isCurrent, onBack, backLabel,
+    onPerson(id, button) {
+      const current = ++selection;
+      button.focus({ preventScroll: true });
+      const selected = () => isCurrent() && current === selection;
+      const changed = () => { if (isCurrent()) refresh(); onChanged?.(); };
+      const returnFocusTo = () => $(`[data-family-person="${id}"]`, host) || $('h2', host);
+      openGuestCard(id, changed, { isCurrent: selected, fromFamily: true, onFamilyChanged: changed, returnFocusTo })
+        .catch(err => { if (selected()) toast(err.message, 'warn'); });
+    },
+  });
+}
+
+let boardGuest = null;
+registerModule({ views: { guestfamily: loadBoardFamily } });
+
+export function openBoardFamily(guest) {
+  closeDrawer();
+  boardGuest = { guest, user: state.user };
+  navigate('guestfamily');
+}
+
+function loadBoardFamily() {
+  const view = $('#view-guestfamily');
+  const current = loadGenerationFor(view);
+  const entry = boardGuest;
+  boardGuest = null;
+  if (state.view !== 'guestfamily') return;
+  if (!entry || state.user !== entry.user) { navigate('stays'); return; }
+  render(html`<div class="family-canvas"></div>`, mount(view));
+  mountGuestFamily($('.family-canvas', view), entry.guest, {
+    isCurrent: () => current() && state.user === entry.user && state.view === 'guestfamily',
+    onBack: () => navigate('stays'),
+    backLabel: 'К шахматке',
+  });
 }

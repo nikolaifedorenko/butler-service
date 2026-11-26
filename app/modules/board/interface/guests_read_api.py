@@ -24,14 +24,14 @@ from .schemas import FamilyOut, GuestPickOut, GuestStayOut, GuestTabOut
 router = APIRouter(prefix="/api/stays", tags=["stays"])
 
 
-@router.get("/guests", response_model=list[GuestPickOut])
-def list_guests(q: str = "", mine_only: bool = Query(False, alias="mine"),
+@router.get("/guests", response_model=list[GuestPickOut], response_model_exclude_unset=True)
+def list_guests(q: str = "", mine_only: bool = Query(False, alias="mine"), details: bool = False,
                 principal: Principal = Depends(require_perm("stays.view", "stays.guests", "stays.mine_guest_edit")),
                 db: Session = Depends(get_db)):
     """Подбор гостя; mine=1 — только свои гости батлера (редактор связей, часть 4 §3)."""
     if "stays.view" not in principal.gate_permissions and "stays.guests" not in principal.gate_permissions:
         mine_only = True
-    return guest_screen.search(db, principal, q, mine_only)
+    return guest_screen.search(db, principal, q, mine_only, details=details)
 
 
 @router.get("/guests/list", response_model=GuestTabOut)
