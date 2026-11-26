@@ -1,5 +1,5 @@
 # Образ приложения. База — PostgreSQL: адрес задают POSTGRES_* или DATABASE_URL (app/core/config.py)
-FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.10 AS uv
 
 FROM python:3.15-slim
 # Патчи Debian могут выходить до пересборки базового образа. Обновляем пакеты,
