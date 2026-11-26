@@ -1,14 +1,14 @@
 /* Service Worker «Батлер Сервис».
    Статика (оболочка приложения) — из кэша, с фоновым обновлением; API — всегда сеть:
    отметки и табель никогда не берутся из кэша. Версию меняйте вместе с ?v= в index.html. */
-const VERSION = 'tt-2026-11-26-global-sidebar';
-// содержимое оболочки: 17cb5af346774a70
+const VERSION = 'tt-2026-11-26-guest-events';
+// содержимое оболочки: b153ba0c7e609af2
 const SHELL = [
   '/',
-  '/static/css/app.css?v=2026-11-26-global-sidebar',
-  '/static/css/base.css?v=2026-11-26-global-sidebar',
-  '/static/css/components.css?v=2026-11-26-global-sidebar',
-  '/static/css/tokens.css?v=2026-11-26-global-sidebar',
+  '/static/css/app.css?v=2026-11-26-guest-events',
+  '/static/css/base.css?v=2026-11-26-guest-events',
+  '/static/css/components.css?v=2026-11-26-guest-events',
+  '/static/css/tokens.css?v=2026-11-26-guest-events',
   '/static/js/app.js',
   '/static/js/core.js',
   '/static/js/modules/access.js',
@@ -21,6 +21,7 @@ const SHELL = [
   '/static/js/modules/engine_settings.js',
   '/static/js/modules/fact.js',
   '/static/js/modules/grafik.js',
+  '/static/js/modules/guest_events.js',
   '/static/js/modules/marks.js',
   '/static/js/modules/me.js',
   '/static/js/modules/mgmt.js',
@@ -57,7 +58,7 @@ const SHELL = [
   '/static/js/modules/timesheet_common.js',
   '/static/js/modules/timesheet_layers.js',
   '/static/js/modules/today.js',
-  '/static/js/print-page.js?v=2026-11-26-global-sidebar',
+  '/static/js/print-page.js?v=2026-11-26-guest-events',
   '/static/js/registry.js',
   '/static/js/ui/data_state.js',
   '/static/js/ui/design_demo.js',
@@ -66,7 +67,7 @@ const SHELL = [
   '/static/js/ui/html.js',
   '/static/js/ui/palette.js',
   '/static/js/ui/period_nav.js',
-  '/static/js/ui/theme.js?v=2026-11-26-global-sidebar',
+  '/static/js/ui/theme.js?v=2026-11-26-guest-events',
   '/static/vendor/lit-html/directive.js',
   '/static/vendor/lit-html/lit-html.js',
   '/manifest.webmanifest',

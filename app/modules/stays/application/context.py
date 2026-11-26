@@ -7,7 +7,8 @@ import datetime as dt
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Integer, any_, literal, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Session
 
 from app.modules.fund.application.fund_versions import (
@@ -189,8 +190,15 @@ class StaysContext:
         }.get(w.kind, w.kind)
 
 
-def _line_rows(db: Session, first: dt.date, last: dt.date) -> list[Line]:
-    rows = list(db.scalars(select(CoverageLine).where(CoverageLine.day >= first, CoverageLine.day <= last)))
+def _line_rows(db: Session, first: dt.date, last: dt.date,
+               targets: tuple[set[int], set[int]] | None = None) -> list[Line]:
+    query = select(CoverageLine).where(CoverageLine.day >= first, CoverageLine.day <= last)
+    if targets is not None:
+        reservations, groups = targets
+        if not reservations:
+            return []
+        query = query.where(or_(CoverageLine.reservation_id.in_(reservations), CoverageLine.group_id.in_(groups)))
+    rows = list(db.scalars(query))
     picked: dict[int, set[int]] = {r.id: set() for r in rows}
     if rows:
         for cg in db.scalars(select(CoverageGuest).where(CoverageGuest.coverage_id.in_(list(picked)))):
@@ -200,12 +208,24 @@ def _line_rows(db: Session, first: dt.date, last: dt.date) -> list[Line]:
 
 
 def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | None, *,
-                 fund_window_only: bool = False) -> StaysContext:
+                 fund_window_only: bool = False, scope_guest_ids: set[int] | None = None) -> StaysContext:
     """Брони, ночующие в [first, last], их сегменты, объекты, гости, строки покрытия, список
-    «Сопровождают гостей» и График (если передан duty) — пакетно."""
+    «Сопровождают гостей» и График (если передан duty) — пакетно.
+
+    scope_guest_ids сужает брони для чтения объекта и назначений календаря. В выбранных
+    бронях состав целиком, строки покрытия — прямые и групповые для всех их групп.
+    """
     st = get_settings(db)
-    res = {r.id: r for r in db.scalars(select(Reservation).where(
-        Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first).order_by(Reservation.id))}
+    query = select(Reservation).where(
+        Reservation.status.in_(allocation.OCCUPYING), Reservation.check_in <= last, Reservation.check_out > first,
+    ).order_by(Reservation.id)
+    if scope_guest_ids is not None:
+        # Один параметр-массив, чтобы число гостей не ограничивалось числом SQL-параметров.
+        guest_ids = literal(sorted(scope_guest_ids), type_=ARRAY(Integer))
+        query = query.where(Reservation.id.in_(select(Occupant.reservation_id).where(
+            Occupant.guest_id == any_(guest_ids), Occupant.date_from <= last, Occupant.date_to > first,
+        )))
+    res = {r.id: r for r in db.scalars(query)}
     stay_first = min((r.check_in for r in res.values()), default=first)
     stay_last = max((r.check_out for r in res.values()), default=last)
     if fund_window_only:
@@ -237,7 +257,10 @@ def load_context(db: Session, first: dt.date, last: dt.date, duty: DutyPort | No
     segs = {rid: pieces(segments(r.check_in, r.check_out, r.early, r.late, r.category_id, moves[rid]),
                         allocation.own_cuts(cuts, starts, rid))
             for rid, r in res.items()}
-    lines = _line_rows(db, first, last)
+    targets = None
+    if scope_guest_ids is not None:
+        targets = (set(res), {r.group_id for r in res.values() if r.group_id is not None})
+    lines = _line_rows(db, first, last, targets)
     active_staff = dict(db.execute(select(Employee.id, Employee.full_name).where(Employee.active.is_(True))).all())
     escorts = [e.employee_id for e in db.scalars(select(Escort).where(Escort.active.is_(True)))
                if e.employee_id in active_staff]

@@ -8715,6 +8715,203 @@
         "title": "GuestCardOut",
         "type": "object"
       },
+      "GuestEventFiltersOut": {
+        "additionalProperties": false,
+        "properties": {
+          "guest_details": {
+            "title": "Guest Details",
+            "type": "boolean"
+          },
+          "vip_codes": {
+            "items": {
+              "$ref": "#/components/schemas/GuestEventVipCodeOut"
+            },
+            "title": "Vip Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "guest_details",
+          "vip_codes"
+        ],
+        "title": "GuestEventFiltersOut",
+        "type": "object"
+      },
+      "GuestEventOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "birthday",
+              "wedding",
+              "special"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/GuestEventPersonOut"
+            },
+            "title": "People",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "kind",
+          "title",
+          "people"
+        ],
+        "title": "GuestEventOut",
+        "type": "object"
+      },
+      "GuestEventPersonOut": {
+        "additionalProperties": false,
+        "properties": {
+          "guest_id": {
+            "title": "Guest Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reservation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Id"
+          },
+          "special": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special"
+          },
+          "status": {
+            "enum": [
+              "staying",
+              "arrival",
+              "checkout",
+              "tentative",
+              "none",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "vip_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vip Code"
+          }
+        },
+        "required": [
+          "guest_id",
+          "name",
+          "status",
+          "unit",
+          "reservation_id",
+          "vip_code",
+          "special"
+        ],
+        "title": "GuestEventPersonOut",
+        "type": "object"
+      },
+      "GuestEventVipCodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code"
+        ],
+        "title": "GuestEventVipCodeOut",
+        "type": "object"
+      },
+      "GuestEventsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/GuestEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GuestEventFiltersOut"
+          },
+          "month": {
+            "format": "date",
+            "title": "Month",
+            "type": "string"
+          },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "today",
+          "filters",
+          "events"
+        ],
+        "title": "GuestEventsOut",
+        "type": "object"
+      },
       "GuestFullCardOut": {
         "additionalProperties": false,
         "description": "Карточка гостя целиком — с историей проживаний.",
@@ -32870,6 +33067,111 @@
           }
         },
         "summary": "Leave Group",
+        "tags": [
+          "stays"
+        ]
+      }
+    },
+    "/api/stays/guest-events": {
+      "get": {
+        "description": "Месяц событий доступных гостей и их проживание на дату события.",
+        "operationId": "events_calendar_api_stays_guest_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "birthday",
+                    "wedding",
+                    "special"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirmed_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirmed Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vip_code_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Vip Code Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "special",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Special",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestEventsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events Calendar",
         "tags": [
           "stays"
         ]

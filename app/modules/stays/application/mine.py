@@ -76,7 +76,7 @@ def my_reservation_ids(db: Session, employee_id: int) -> set[int]:
     return set(db.scalars(q.with_only_columns(r.id).distinct()))
 
 
-def _guest_ids_query(employee_id: int):
+def guest_ids_query(employee_id: int):
     """Гости явных списков батлера (строка на живую бронь или ночь группы — как у «вся бронь»);
     проживающие ночи, которую батлер ведёт строкой «вся бронь / группа», если в ту ночь их явно
     не ведёт другая строка (по брони или её группе); профили, которые батлер завёл сам."""
@@ -97,13 +97,13 @@ def _guest_ids_query(employee_id: int):
 
 
 def my_guest_ids(db: Session, employee_id: int) -> set[int]:
-    return set(db.scalars(_guest_ids_query(employee_id)))
+    return set(db.scalars(guest_ids_query(employee_id)))
 
 
 def search_my_guests(db: Session, employee_id: int, q: str, full: bool) -> list[Guest]:
     """Подбор гостя среди своих (редактор связей батлера): связать можно только своих (§3);
     ниже полного уровня — только по ФИО (решение 8)."""
-    return search_guests(db, q, within=_guest_ids_query(employee_id), full=full)
+    return search_guests(db, q, within=guest_ids_query(employee_id), full=full)
 
 
 def owns_reservation(db: Session, employee_id: int, reservation_id: int) -> bool:
@@ -113,14 +113,14 @@ def owns_reservation(db: Session, employee_id: int, reservation_id: int) -> bool
 
 def owns_guest(db: Session, employee_id: int, guest_id: int) -> bool:
     return db.scalar(select(Guest.id).where(Guest.id == guest_id,
-                                            Guest.id.in_(_guest_ids_query(employee_id)))) is not None
+                                            Guest.id.in_(guest_ids_query(employee_id)))) is not None
 
 
 def owned_among(db: Session, employee_id: int, ids: set[int]) -> set[int]:
     """Кто из ids — свой гость батлера (тот же запрос, что owns_guest)."""
     if not ids:
         return set()
-    return set(db.scalars(select(Guest.id).where(Guest.id.in_(ids), Guest.id.in_(_guest_ids_query(employee_id)))))
+    return set(db.scalars(select(Guest.id).where(Guest.id.in_(ids), Guest.id.in_(guest_ids_query(employee_id)))))
 
 
 def check_no_gained_guests(db: Session, employee_id: int, had: set[int], owned_before: set[int]) -> None:
@@ -350,7 +350,7 @@ def mine_guests(db: Session, employee_id: int, q: str = "", offset: int = 0, lim
     """«Все мои гости»: свои за всё время, поиск как подбор гостя (ниже полного уровня — по ФИО),
     по GUESTS_PAGE. Последний заезд и число проживаний — только начавшиеся (заезд не позже
     сегодня), следующий заезд — ближайший будущий; без отменённых и «не заехал»; одним запросом."""
-    stmt = select(Guest).where(Guest.id.in_(_guest_ids_query(employee_id)))
+    stmt = select(Guest).where(Guest.id.in_(guest_ids_query(employee_id)))
     ts = text_search(q, full)
     if ts is not None:
         stmt = stmt.where(guest_search_column(full).contains(ts.needle, autoescape=True))
