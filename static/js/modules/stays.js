@@ -734,6 +734,25 @@ function staysEscortTitle(card) {
 }
 
 /* ─────────────── Карточка брони ─────────────── */
+export function openOwnReservationCard(r, { returnFocusTo, detail, onChanged } = {}) {
+  const edit = !!onChanged && (can('stays.edit') || can('stays.mine_res_edit'));
+  openModal({
+    title: `Бронь ${r.number || '#' + r.reservation_id}`,
+    subtitle: `${r.unit || 'Без объекта'} · ${dateRu(r.check_in)}–${dateRu(r.check_out)}`,
+    returnFocusTo,
+    body: html`<p>${r.guests.map(guest => guest.name).join(', ') || 'Состав гостей пока не указан'}</p>
+      ${detail ? html`<p>${detail}</p>` : nothing}`,
+    footer: edit ? html`<button type="button" id="rc-edit" class="btn btn-primary">Изменить</button>` : nothing,
+    onMount(dialog) {
+      const source = dialog.firstElementChild;
+      const current = () => source.isConnected && !source.closest('[inert]');
+      if (edit) $('#rc-edit', dialog).onclick = () => openReservationForm(r.reservation_id, {
+        mine: !can('stays.edit'), onSaved: onChanged, isCurrent: current,
+      }).catch(err => { if (current()) toast(err.message, 'err'); });
+    },
+  });
+}
+
 export async function openReservationCard(rid, onChanged, { isCurrent = () => true, returnFocusTo, silent = false } = {}) {
   const [card, history] = await Promise.all([
     api(`/api/stays/reservations/${rid}/card`, { silent }), api(`/api/stays/reservations/${rid}/history`, { silent })]);
@@ -776,7 +795,12 @@ export async function openReservationCard(rid, onChanged, { isCurrent = () => tr
     onMount(m) {
       $('[data-close]', m).onclick = closeModal;
       const edit = $('#rc-edit', m);
-      if (edit) edit.onclick = () => openReservationForm(rid, { mine: mineEdit, onSaved: onChanged });
+      if (edit) {
+        const source = m.firstElementChild;
+        const current = () => source.isConnected && !source.closest('[inert]');
+        edit.onclick = () => openReservationForm(rid, { mine: mineEdit, onSaved: onChanged, isCurrent: current })
+          .catch(err => { if (current()) toast(err.message, 'err'); });
+      }
       const assign = $('#rc-assign', m);
       if (assign) assign.onclick = () => openCoverageForm(card, onChanged);
       const st = $('#rc-status', m);

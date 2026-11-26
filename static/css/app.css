@@ -1171,6 +1171,9 @@ tr.fund-retired td .badge { text-decoration: none; }
 /* §6.1: от 50 % — синий, от 80 % — жёлтый, 100 % и больше — красный */
 .oc-cell.heat1 { background: var(--info-bg); } .oc-cell.heat2 { background: var(--warn-bg); } .oc-cell.heat3 { background: var(--brand-bg); }
 .mine-card .mine-guest { padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.mine-guest-name { min-height: 44px; border: 0; padding: 0; background: none; color: var(--brand-fg-strong);
+  font: inherit; font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: .16em; cursor: pointer; }
+.mine-card [aria-busy="true"] { cursor: progress; }
 /* «Мои гости» (часть 4 §5): вкладки, мини-шахматка месяца и полоса нагрузки; сетка прокручивается внутри себя */
 .mine-tabs { margin-bottom: 12px; }
 .mine-grow { padding: 8px 6px; border-bottom: 1px solid var(--info-line); cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }

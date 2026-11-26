@@ -10,12 +10,12 @@
    ══════════════════════════════════════════════════════════════════ */
 import { can, navigate, poll, registerModule } from '../app.js';
 import {
-  $, api, authContextIsCurrent, authContextSnapshot, dateRu, hhmm, loadGeneration, MONTHS_GEN, openModal, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
+  $, api, authContextIsCurrent, authContextSnapshot, hhmm, loadGeneration, MONTHS_GEN, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { dataState } from '../ui/data_state.js';
 import { openOtNoteModal } from './me.js';
-import { openReservationCard, openTodayDayBoard } from './stays.js';
+import { openOwnReservationCard, openReservationCard, openTodayDayBoard } from './stays.js';
 import { guestPreferenceLabel } from './stays_forms.js';
 
 registerModule({ views: { today: loadToday } });
@@ -225,10 +225,7 @@ function openTodayBooking(view, r) {
   };
   if (!isCurrent()) return;
   if (!can('stays.view')) {
-    openModal({ title: `Бронь ${r.number || '#' + r.reservation_id}`, returnFocusTo,
-      subtitle: `${r.unit || 'Без объекта'} · ${dateRu(r.check_in)}–${dateRu(r.check_out)}`,
-      body: html`<p>${r.guests.map(guest => guest.name).join(', ')}</p>${resNotes(r) ? html`<p>${resNotes(r)}</p>` : nothing}`,
-    });
+    openOwnReservationCard(r, { returnFocusTo, detail: resNotes(r) });
     return;
   }
   view.pendingCard = r.reservation_id;
