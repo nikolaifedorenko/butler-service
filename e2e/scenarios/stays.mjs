@@ -546,12 +546,13 @@ const $ = s => window.document.querySelector(s);
     await setCheck(`[data-sf-group="${villas.id}"]`, true);
     /* поиск набирается — перерисовка после паузы не отнимает фокус у поля */
     const search = 'Лебедев';
-    $('#sf-q').focus();
-    input($('#sf-q'), search);
     const typed = $('#sf-q');
-    await waitFor(() => $('#sf-q') && $('#sf-q') !== typed);
-    check('поиск: после перерисовки фокус и текст в поле', window.document.activeElement?.id === 'sf-q'
-      && $('#sf-q').value === search && (MODS.stays.staysState.filters.q) === search);
+    typed.focus();
+    input(typed, search);
+    // Кнопка печати снова доступна, когда сетка получила ответ на новый поиск.
+    const applied = await waitFor(() => $('#sb-print')?.disabled === false);
+    check('поиск: после перерисовки фокус и текст в поле', applied && document.activeElement === typed
+      && typed.value === search && MODS.stays.staysState.filters.q === search);
     const name = 'Виллы ' + uniq;
     input($('#sf-save-name'), name);
     click($('#sf-save'));
@@ -862,19 +863,24 @@ const $ = s => window.document.querySelector(s);
     await waitFor(() => $$('#view-stays [data-stab]').length > 0);
     MODS.stays.openReservationCard(own.reservation_id);
     check('своя бронь: кнопка «Карточка» гостя', await waitFor(() => !!$(`#modal [data-guest-card="${gid}"]`)));
-    click($(`#modal [data-guest-card="${gid}"]`));   /* модалка брони закрывается — карточка гостя панелью */
-    check('карточка своего гостя открылась', await waitFor(() => !!$('#gc-family .ft-centre')), text('#drawer'));
+    click($(`#modal [data-guest-card="${gid}"]`));
+    check('карточка своего гостя открылась', await waitFor(() => !!$('#drawer [data-gc-family-open]')), text('#drawer'));
+    const editFamily = $('#drawer [data-gc-family-edit]');
     check('батлер: «Изменить профиль», редактор дерева и «Предпочитает»', !!$('#gc-edit')
-      && !!$('#gc-family [data-ft-add="child"]') && !!$('#gc-prefs [data-pref-add]'));
-  
+      && !!editFamily && !!$('#gc-prefs [data-pref-add]'));
+
     const last = 'Батлеров' + uniq;
-    click($('#gc-family [data-ft-add="child"]'));
-    check('панель «Добавить ребёнка»', await waitFor(() => !!$('#gc-family [data-ft-last]')));
-    $('#gc-family [data-ft-last]').value = last;
-    $('#gc-family [data-ft-first]').value = 'Сын';
-    change($('#gc-family [data-ft-gender]'), 'm');
-    click($('#gc-family [data-ft-create]'));
-    check('новый ребёнок в дереве', await waitFor(() => text('#gc-family .ft-tree').includes(last)), text('#gc-family'));
+    click(editFamily);
+    await waitFor(() => !!$('#modal [data-ft-add="child"]'));
+    click($('#modal [data-ft-add="child"]'));
+    check('панель «Добавить ребёнка»', await waitFor(() => !!$('#modal [data-ft-child-mode="new"]')));
+    click($('#modal [data-ft-child-mode="new"]'));
+    input($('#modal [data-ft-last]'), last);
+    input($('#modal [data-ft-first]'), 'Сын');
+    change($('#modal [data-ft-gender]'), 'm');
+    click($('#modal [data-ft-create]'));
+    check('новый ребёнок в дереве', await waitFor(() => text('#modal .ft-tree').includes(last)), text('#modal'));
+    click($('#modal [data-close]'));
     const child = (await apiJson('GET', `/api/stays/guests/${gid}/family`)).body.people.find(p => p.name.includes(last));
     check('ребёнок записан на сервере', !!child);
     if (!child) return;
@@ -1133,6 +1139,7 @@ const $ = s => window.document.querySelector(s);
     await waitFor(() => !!$(`[data-guest-card="${g.id}"]`));
     click($(`[data-guest-card="${g.id}"]`));
     check('карточка гостя: история проживаний', await waitFor(() => text('#gc-history').includes('FA' + uniq)));
+    check('карточка гостя из брони: можно открыть семейное дерево', !!$('#drawer [data-gc-family-open]'));
     input($('#gc-link-q'), 'Связанов' + uniq);
     check('поиск гостя для связи', await waitFor(() => !!$(`[data-link-pick="${g2.id}"]`)));
     click($(`[data-link-pick="${g2.id}"]`));
@@ -1153,6 +1160,7 @@ const $ = s => window.document.querySelector(s);
     check('особая дата сохранена', gc.special_dates.some(x => x.what === 'юбилей' && x.date === day(30)), JSON.stringify(gc.special_dates));
     check('поле гостя сохранено', gc.fields[gField] === 'кот');
     check('связь видна в профиле', gc.links.some(l => l.guest_id === g2.id && l.label === 'коллега'));
+    click($('#drawer [data-close]'));
     check('нет мусора в DOM', !/undefined|NaN|\[object Object\]/.test($('#view-stays').innerHTML + ($('#modal')?.innerHTML || '')));
     void u1;
   }
@@ -1492,12 +1500,14 @@ const $ = s => window.document.querySelector(s);
     check('редактор: кнопки «+ родитель / + супруг(а) / + партнёр / + ребёнок»', ['parent', 'spouse', 'partner', 'child']
       .every(k => !!$(`#gc-family [data-ft-add="${k}"]`)));
   
-    /* пример владельца: Ивану и Марии — сын (новый гость, «и ребёнок супруги» отмечено) */
+    /* пример владельца: Ивану и Марии — сын, Мария выбрана вторым родителем */
     click($('#gc-family [data-ft-add="child"]'));
-    check('панель «Добавить ребёнка»', await waitFor(() => !!$('#gc-family [data-ft-last]')));
-    check('«и ребёнок: Мария» отмечено', $('#gc-family [data-ft-both]')?.checked === true);
-    $('#gc-family [data-ft-last]').value = 'Семьин' + uniq;
-    $('#gc-family [data-ft-first]').value = 'Сын';
+    check('панель «Добавить ребёнка»', await waitFor(() => !!$('#gc-family [data-ft-child-mode="new"]')));
+    click($('#gc-family [data-ft-child-mode="new"]'));
+    input($('#gc-family [data-ft-last]'), 'Семьин' + uniq);
+    input($('#gc-family [data-ft-first]'), 'Сын');
+    click($(`#gc-family [data-ft-second-pick="${maria.id}"]`));
+    check('Мария выбрана вторым родителем', !!$('#gc-family [data-ft-second-clear]'));
     change($('#gc-family [data-ft-gender]'), 'm');
     click($('#gc-family [data-ft-create]'));
     check('сын появился в дереве снизу', await waitFor(() => tree().includes('Сын') && tree().includes('сын')), tree());
@@ -1531,7 +1541,7 @@ const $ = s => window.document.querySelector(s);
     await waitFor(() => !!$('#gc-family [data-ft-create]'));
     check('два родителя: «Создать и связать» заперта с пояснением', $('#gc-family [data-ft-create]').disabled
       && text('#gc-family [data-ft-blocked]').includes('два родителя'));
-    $('#gc-family [data-ft-last]').value = 'Лишний' + uniq;
+    input($('#gc-family [data-ft-last]'), 'Лишний' + uniq);
     $('#gc-family [data-ft-create]').disabled = false;
     $('#toast-host').innerHTML = '';
     click($('#gc-family [data-ft-create]'));

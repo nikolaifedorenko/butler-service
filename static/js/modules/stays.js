@@ -17,6 +17,8 @@ import { renderBookings } from './stays_bookings.js';
 import { openBlockCard, renderBlocksTab } from './stays_blocks.js';
 import { openOooForm, renderOooTab } from './stays_ooo.js';
 import { renderMine } from './stays_mine.js';
+import { guestPickContent } from '../ui/guest_picker.js';
+import { openBoardFamily } from './stays_family_canvas.js';
 import { renderFamilyTree } from './stays_family.js';
 import {
   STAYS_COMPANION, openCoverageForm, openGroupForm, openGuestCard, openReservationForm, openStatusForm, openTransferForm,
@@ -191,7 +193,8 @@ function guestFindView() {
   const full = can('stays.guests');
   if (!full && !(can('stays.mine_guest_edit') && state.user?.employee_id != null)) return nothing;
   ++guestFindGeneration; // новый рендер шапки владеет всеми следующими ответами поиска
-  return html`<div class="guest-find"><input type="search" id="sg-q" placeholder="Найти гостя…"
+  return html`<div class="guest-find"><input type="search" id="sg-q" aria-label="Найти гостя"
+    placeholder=${full ? 'ФИО, телефон или дата рождения' : 'ФИО гостя'}
     @input=${e => {
       clearTimeout(guestFindTimer);
       const input = e.currentTarget;
@@ -202,9 +205,9 @@ function guestFindView() {
         const needle = input.value.trim();
         if (needle.length < 2) { render(nothing, $('[data-sg-res]', host)); return; }
         try {
-          const found = await api(`/api/stays/guests?q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
+          const found = await api(`/api/stays/guests?details=1&q=${encodeURIComponent(needle)}${full ? '' : '&mine=1'}`, { silent: true });
           if (current !== guestFindGeneration || !host.isConnected) return;
-          render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost" data-sg-guest=${g.id}>${g.short}</button>`)
+          render(found.length ? found.map(g => html`<button type="button" class="btn btn-sm btn-ghost guest-pick-button" data-sg-guest=${g.id}>${guestPickContent(g)}</button>`)
             : html`<span class="muted">не найдено</span>`, $('[data-sg-res]', host));
         } catch (err) { if (current === guestFindGeneration) toast(err.message, 'warn'); }
       }, 300);
@@ -214,7 +217,9 @@ function guestFindView() {
       if (!b) return;
       ++guestFindGeneration;
       clearTimeout(guestFindTimer);
-      openGuestCard(Number(b.dataset.sgGuest), () => loadStays());
+      openGuestCard(Number(b.dataset.sgGuest), () => loadStays(), {
+        onOpenFamily: openBoardFamily, isCurrent: () => state.view === 'stays',
+      }).catch(err => toast(err.message, 'warn'));
       const host = e.currentTarget.closest('.guest-find');
       $('input', host).value = '';
       render(nothing, e.currentTarget);
@@ -504,8 +509,13 @@ export async function openReservationCard(rid, onChanged) {
       if (st) st.onclick = () => openStatusForm(card, onChanged);
       /* гость своей брони, которого явно ведёт другой батлер, — чужой: сервер ответит 403.
          Карточка — боковая панель: модалку закрываем, иначе она (z-100) накроет её (z-90) */
-      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => { closeModal();
-        openGuestCard(Number(b.dataset.guestCard), onChanged).catch(e => toast(e.message, 'err')); }; });
+      $$('[data-guest-card]', m).forEach(b => { b.onclick = () => {
+        const origin = state.view;
+        closeModal();
+        openGuestCard(Number(b.dataset.guestCard), onChanged, {
+          onOpenFamily: origin === 'stays' ? openBoardFamily : undefined, isCurrent: () => state.view === origin,
+        }).catch(e => toast(e.message, 'err'));
+      }; });
       /* семейное дерево гостя — только просмотр: правится в карточке гостя (§4, с уровня «с фамилиями») */
       $$('[data-family]', m).forEach(b => {
         b.onclick = () => {

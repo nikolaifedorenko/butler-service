@@ -28,9 +28,10 @@ def _guest(db: Session, gid: int) -> Guest:
     return g
 
 
-def search(db: Session, principal: Principal, q: str, mine_only: bool) -> list[dict]:
-    """Подбор гостя: без контактов и дат рождения. Полный уровень — по ФИО, телефону, почте и
-    полям с поиском; ниже — только по ФИО (решение 8: иначе по ответу подбирается чужой телефон).
+def search(db: Session, principal: Principal, q: str, mine_only: bool, *, details: bool = False) -> list[dict]:
+    """Телефон и дата рождения для подбора запрашиваются с details=1 и полным доступом к профилям.
+    Полный уровень ищет по ФИО, телефону, дате рождения, почте и полям с поиском.
+    Ниже полного уровня поиск только по ФИО (решение 8).
     ``mine_only`` — только свои гости батлера (редактор связей, часть 4 §3)."""
     full = "stays.guests" in principal.gate_permissions
     if mine_only:
@@ -41,7 +42,9 @@ def search(db: Session, principal: Principal, q: str, mine_only: bool) -> list[d
     return [{"id": g.id, "last_name": g.last_name, "first_name": g.first_name,
              "middle_name": g.middle_name, "special": bool(g.special),
              "vip_code_id": g.vip_code_id, "vip_code": codes.get(g.vip_code_id or 0, ("", False))[0],
-             "short": guests.short_name(g)}
+             "short": guests.short_name(g),
+             **({"phone": guests.format_phone(g.phone) or None, "birth_date": g.birth_date}
+                if details and full else {})}
             for g in found]
 
 

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any, Optional
 
 from app.core.schemas import ApiModel
@@ -188,7 +189,7 @@ class BookingListOut(ApiModel):
 
 
 class GuestPickOut(ApiModel):
-    """Гость в подборе: без контактов и дат рождения."""
+    """Гость в подборе. Телефон и дата рождения доступны с полным профилем."""
 
     id: int
     last_name: str
@@ -198,6 +199,8 @@ class GuestPickOut(ApiModel):
     vip_code_id: Optional[int]
     vip_code: str
     short: str
+    phone: Optional[str] = None
+    birth_date: Optional[dt.date] = None
 
 
 class GuestTabRowOut(ApiModel):

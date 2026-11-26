@@ -138,7 +138,7 @@ def add_link(db: Session, principal: Principal, gid: int, payload: LinkIn) -> di
         db, gid, payload.kind, other_id=payload.guest_id,
         new_guest=payload.new_guest.model_dump() if payload.new_guest else None, former=payload.former,
         other_is_parent=payload.other_is_parent, also_parent_id=payload.also_parent_id,
-        also_former_id=payload.also_former_id,
+        expected_parent_ids=payload.expected_parent_ids, also_former_id=payload.also_former_id,
         created_by=butler_id(principal) if butler else None)    # заведённый батлером — его «свой»
     if payload.new_guest:
         audit(db, principal, "stays_guest", f"guest:{other}", {"created": payload.new_guest.model_dump()})

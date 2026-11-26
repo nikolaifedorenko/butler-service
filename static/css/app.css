@@ -1284,3 +1284,17 @@ tr.fund-retired td .badge { text-decoration: none; }
 .family-canvas-relationships { color: var(--muted); font-size: var(--text-sm); margin-top: var(--space-2); }
 .family-canvas-relationships summary { width: fit-content; cursor: pointer; }
 .family-canvas-relationships li { overflow-wrap: anywhere; }
+
+/* Подбор гостей: ФИО и дополнительные признаки видны целиком. */
+.guest-pick-button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.guest-pick-name, .guest-pick-details { display: block; }
+.guest-pick-details { margin-top: 2px; }
+.ft-add { min-inline-size: 0; }
+.ft-add legend { padding-inline: 4px; }
+.ft-child, .ft-search { display: grid; gap: var(--space-2); }
+.ft-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 4px; margin: 4px 0; }
+.ft-fields { margin: 0; }
+.ft-parents { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: var(--space-2); }
+.ft-identity { display: grid; gap: 4px; align-content: start; background: var(--surface-1);
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--space-2); overflow-wrap: anywhere; }
+.ft-identity button { justify-self: start; }

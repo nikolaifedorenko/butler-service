@@ -15,9 +15,10 @@
 import { can, registerModule } from '../app.js';
 import { $, $$, api, closeDrawer, closeModal, dateRu, loadGenerationFor, openModal, state, toast } from '../core.js';
 import { registerPaletteProvider } from '../registry.js';
+import { guestPickDetails, guestPickName } from '../ui/guest_picker.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { STAYS_LINK, openGuestCard, openGuestForm } from './stays_forms.js';
-import { mountFamilyCanvas } from './stays_family_canvas.js';
+import { mountGuestFamily } from './stays_family_canvas.js';
 import { STAYS_SPECIAL_MARK, staysGuestMarkView } from './stays.js';
 
 /* колонки: ключ сортировки сервера (null — без сортировки) — заголовок */
@@ -50,9 +51,9 @@ registerPaletteProvider({
   icon: 'guests',
   hint: 'гость',
   async search(query, signal) {
-    const guests = await api(`/api/stays/guests?q=${encodeURIComponent(query)}${can('stays.guests') ? '' : '&mine=1'}`,
+    const guests = await api(`/api/stays/guests?details=1&q=${encodeURIComponent(query)}${can('stays.guests') ? '' : '&mine=1'}`,
       { silent: true, signal });
-    return guests.map(guest => ({ ...guest, title: guest.short, hint: 'гость', icon: 'guests' }));
+    return guests.map(guest => ({ ...guest, title: guestPickName(guest), detail: guestPickDetails(guest), hint: 'гость', icon: 'guests' }));
   },
   activate(guest) { openGuestCard(guest.id); },
 });
@@ -100,22 +101,14 @@ async function loadGuests() {
         canvas.classList.remove('hidden');
         const session = ++familySession;
         const canvasActive = () => isCurrent() && session === familySession;
-        const refresh = mountFamilyCanvas(canvas, guest, {
+        mountGuestFamily(canvas, guest, {
+          onChanged: reload,
           isCurrent: canvasActive,
           onBack() {
             ++familySession;
             canvas.classList.add('hidden');
             list.classList.remove('hidden');
             ($(`[data-gl-row="${guest.id}"]`, list) || $('#gl-q', list)).focus({ preventScroll: true });
-          },
-          onPerson(person, button) {
-            const selection = ++cardRequest;
-            button.focus({ preventScroll: true });
-            const selected = () => canvasActive() && cardRequest === selection;
-            const changed = () => { if (canvasActive()) refresh(); reload(); };
-            const returnFocusTo = () => $(`[data-family-person="${person}"]`, canvas) || $('h2', canvas);
-            openGuestCard(person, changed, { isCurrent: selected, fromFamily: true, onFamilyChanged: changed, returnFocusTo })
-              .catch(err => { if (selected()) toast(err.message, 'warn'); });
           },
         });
       },

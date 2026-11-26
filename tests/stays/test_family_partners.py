@@ -105,3 +105,18 @@ def test_partner_cannot_be_ancestor(manager_client):
     r = _link(manager_client, g["id"], "partner", guest_id=parent["id"])
     assert r.status_code == 422
     assert "предка или потомка" in r.json()["detail"]
+
+
+def test_existing_child_link_rejects_stale_parent_selection(manager_client):
+    child = make_guest(manager_client)
+    former_parent = make_guest(manager_client)
+    new_parent = make_guest(manager_client)
+    original = _link(manager_client, former_parent["id"], "parent", guest_id=child["id"])
+    assert original.status_code == 200, original.text
+    assert manager_client.delete(f"{API}/guest-links/{original.json()['id']}").status_code == 200
+
+    stale = _link(manager_client, new_parent["id"], "parent", guest_id=child["id"],
+                  expected_parent_ids=[former_parent["id"]])
+    assert stale.status_code == 409, stale.text
+    family = manager_client.get(f"{API}/guests/{child['id']}/family").json()
+    assert family["parents"] == []

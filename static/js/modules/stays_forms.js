@@ -12,6 +12,7 @@ import { can } from '../app.js';
 import { $, $$, api, closeDrawer, closeModal, dateRu, openDrawer, openModal, toast } from '../core.js';
 import { html, nothing, render } from '../ui/html.js';
 import { checkField, fieldRow, optionView, textInput } from '../ui/form.js';
+import { guestPickContent, guestPickName } from '../ui/guest_picker.js';
 import { renderFamilyTree } from './stays_family.js';
 import {
   STAYS_ESCORT_MODE, STAYS_SPECIAL_MARK, staysAddDays, staysFund, staysToday, staysWeight,
@@ -307,10 +308,10 @@ export async function openReservationForm(id, opts = {}) {
         clearTimeout(timer);
         timer = setTimeout(async () => {
           const q = e.target.value.trim();
-          const found = q.length < 2 ? [] : await api('/api/stays/guests?q=' + encodeURIComponent(q), { silent: true });
-          render(found.length ? html`${found.map(g => html`<button class="btn btn-sm btn-ghost" data-pick-guest=${g.id} data-name=${g.short} data-code=${g.vip_code_id ?? ''}
+          const found = q.length < 2 ? [] : await api('/api/stays/guests?details=1&q=' + encodeURIComponent(q), { silent: true });
+          render(found.length ? html`${found.map(g => html`<button class="btn btn-sm btn-ghost guest-pick-button" data-pick-guest=${g.id} data-name=${g.short} data-code=${g.vip_code_id ?? ''}
             @click=${() => { addGuest(g.id, g.short, g.vip_code_id ?? null); render(nothing, $('#rf-guest-res', m)); }}>
-            ${g.special ? STAYS_SPECIAL_MARK : ''}${g.last_name} ${g.first_name} ${g.middle_name}</button>`)}`
+            ${guestPickContent(g, g.special ? STAYS_SPECIAL_MARK : '')}</button>`)}`
             : (q.length >= 2 ? html`<span class="muted">не найдено</span>` : nothing), $('#rf-guest-res', m));
         }, 300);
       };
@@ -539,7 +540,12 @@ export async function openGuestCard(gid, onChanged, options = {}) {
     title: `${g.special ? STAYS_SPECIAL_MARK : ''}${name}`,
     background: familyCanvas ? $('#app') : null, returnFocusTo,
     subtitle: [g.vip_code ? `VIP-код ${g.vip_code.code}${g.vip_code.archived ? ' (в архиве)' : ''}` : '', g.phone_display, g.email, g.birth_date ? 'др ' + dateRu(g.birth_date) : ''].filter(Boolean).join(' · '),
-    body: html`<div class="grid-2">
+    body: html`${familyCanvas && (onOpenFamily || edit) ? html`<div class="sb-line">
+        ${onOpenFamily ? html`<button type="button" class="btn btn-sm" data-gc-family-open
+          @click=${() => onOpenFamily({ id: gid, name })}>Открыть семейное дерево</button>` : nothing}
+        ${edit ? html`<button type="button" class="btn btn-sm btn-ghost" data-gc-family-edit
+          @click=${showFamilyEditor}>Редактировать связи</button>` : nothing}
+      </div>` : nothing}<div class="grid-2">
         <div><h4>Предпочтения</h4>${prefsShown.length ? prefsShown.map(([k, v]) => html`<div>${k}: ${v}</div>`) : html`<span class="muted">нет</span>`}
           <h4>Предпочитает</h4><div id="gc-prefs"></div>
           ${g.special_dates.length ? html`<h4>Особые даты</h4>${g.special_dates.map(d => html`<div>${dateRu(d.date)} — ${d.what}</div>`)}` : nothing}
@@ -551,11 +557,7 @@ export async function openGuestCard(gid, onChanged, options = {}) {
             <select id="gc-link-kind">${Object.entries(STAYS_LINK).filter(([k]) => !STAYS_FAMILY_LINK.has(k)).map(([k, t]) => html`<option value=${k}>${t}</option>`)}</select>
             <button class="btn btn-sm" id="gc-link-add" disabled>Связать</button></div><div id="gc-link-res"></div>` : nothing}</div>
       </div>
-      ${familyCanvas ? (onOpenFamily || edit ? html`<h4>Семейные связи</h4><div class="sb-line">
-        ${onOpenFamily ? html`<button type="button" class="btn btn-sm" @click=${() => onOpenFamily({ id: gid, name })}>
-          Открыть семейное дерево</button>` : nothing}
-        ${edit ? html`<button type="button" class="btn btn-sm btn-ghost" @click=${showFamilyEditor}>Редактировать связи</button>` : nothing}
-      </div>` : nothing) : html`<h4>Семейное дерево</h4><div id="gc-family" class="ft"></div>`}
+      ${familyCanvas ? nothing : html`<h4>Семейное дерево</h4><div id="gc-family" class="ft"></div>`}
       <h4>История проживаний</h4>
       <div id="gc-history" class="sb-history">${g.stays.length ? g.stays.map(x => html`<div><b>${x.number || '#' + x.reservation_id}</b> · ${x.units.join(' → ') || 'без объекта'}
         · ${dateRu(x.date_from)}–${dateRu(x.date_to)} · ${STAYS_ROLE[x.role]} · ${x.status_title}
@@ -587,10 +589,10 @@ export async function openGuestCard(gid, onChanged, options = {}) {
         clearTimeout(timer);
         timer = setTimeout(async () => {
           /* батлер связывает только со своими гостями — поиск среди своих */
-          const found = q.value.trim().length < 2 ? [] : (await api(`/api/stays/guests?q=${encodeURIComponent(q.value.trim())}${full ? '' : '&mine=1'}`, { silent: true }))
+          const found = q.value.trim().length < 2 ? [] : (await api(`/api/stays/guests?details=1&q=${encodeURIComponent(q.value.trim())}${full ? '' : '&mine=1'}`, { silent: true }))
             .filter(x => x.id !== gid);
-          render(html`${found.map(x => html`<button class="btn btn-sm btn-ghost" data-link-pick=${x.id}
-            @click=${() => { picked = x.id; q.value = x.short; $('#gc-link-add', m).disabled = false; }}>${x.short}</button>`)}`, $('#gc-link-res', m));
+          render(html`${found.map(x => html`<button class="btn btn-sm btn-ghost guest-pick-button" data-link-pick=${x.id}
+            @click=${() => { picked = x.id; q.value = guestPickName(x); $('#gc-link-add', m).disabled = false; }}>${guestPickContent(x)}</button>`)}`, $('#gc-link-res', m));
         }, 300);
       };
       $('#gc-link-add', m).onclick = async () => {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -246,11 +247,13 @@ def add_link(db: Session, guest_id: int, other_id: int, kind: str, former: bool 
 
 def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = None, new_guest: dict | None = None,
               former: bool = False, other_is_parent: bool = False, also_parent_id: int | None = None,
-              also_former_id: int | None = None, created_by: int | None = None) -> tuple[list[GuestLink], int]:
+              also_former_id: int | None = None, created_by: int | None = None,
+              expected_parent_ids: list[int] | None = None) -> tuple[list[GuestLink], int]:
     """Связь из редактора дерева (§4) одной записью под одним замком → (связи, id второй стороны).
     Вторая сторона — существующий гость other_id или новый new_guest (фамилия, имя, пол);
     other_is_parent — она родитель guest_id (иначе guest_id — её родитель при kind=parent);
-    also_parent_id — второй родитель того же ребёнка («и ребёнок супруги»);
+    also_parent_id — второй родитель того же ребёнка;
+    expected_parent_ids — ранее показанные в форме родители существующего ребёнка;
     also_former_id — прежний брак гостя станет «бывшим» в той же записи (новый супруг:
     без этого добавление заблокировано правилом одного действующего супруга);
     created_by — батлер, который заводит нового человека: тот становится его «своим» (часть 4 §3).
@@ -262,6 +265,13 @@ def add_links(db: Session, guest_id: int, kind: str, *, other_id: int | None = N
         raise GuestError("«Родитель» — только для связи родитель — ребёнок")
     if also_parent_id is not None and (kind != "parent" or other_is_parent):
         raise GuestError("Второй родитель — только при добавлении ребёнка")
+    if expected_parent_ids is not None:
+        if kind != "parent" or other_is_parent or other_id is None:
+            raise GuestError("Ожидаемые родители указываются только для существующего ребёнка")
+        parents = list(db.scalars(select(GuestLink.guest_a_id).where(
+            GuestLink.kind == "parent", GuestLink.guest_b_id == other_id)))
+        if sorted(parents) != sorted(expected_parent_ids):
+            raise FundConflict("Родительские связи изменились. Проверьте родителей и повторите сохранение")
     if also_parent_id is not None and also_parent_id == guest_id:
         raise GuestError("Второй родитель совпадает с первым")
     if also_former_id is not None and kind != "spouse":
@@ -408,7 +418,15 @@ def search_guests(db: Session, q: str, limit: int = 30, within=None, full: bool 
     ts = text_search(q, full)
     if ts is None:
         return []
-    stmt = select(Guest).where(guest_search_column(full).contains(ts.needle, autoescape=True))
+    match = guest_search_column(full).contains(ts.needle, autoescape=True)
+    date_text = q.strip()
+    if full:
+        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", date_text):
+            date_text = "-".join(reversed(date_text.split(".")))
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_text):
+            with suppress(ValueError):
+                match = or_(match, Guest.birth_date == dt.date.fromisoformat(date_text))
+    stmt = select(Guest).where(match)
     if within is not None:
         stmt = stmt.where(Guest.id.in_(within))
     return list(db.scalars(stmt.order_by(Guest.last_name, Guest.first_name, Guest.id).limit(limit)))
