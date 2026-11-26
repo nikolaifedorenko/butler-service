@@ -259,7 +259,7 @@ export function staysRowChanges(u, cats) {
     .filter(Boolean).join(' · ');
 }
 
-function barTemplate(b, base, span, names) {
+function barTemplate(b, base, span, names, unit) {
   const left = Math.max(0, (b.start_pos - base) / span * 100);
   const right = Math.min(100, (b.end_pos - base + 1) / span * 100);
   if (right <= 0 || left >= 100) return nothing;
@@ -268,8 +268,37 @@ function barTemplate(b, base, span, names) {
     ? html`${staysGuestMarkView(b.special)}${b.main_guest || b.number || 'бронь'}${b.vip_code ? ` · ${b.vip_code}` : ''}`
     : `занято · ${b.guests_count} гост.`;
   const tip = names ? `${b.number} · ${dateRu(b.start)}–${dateRu(b.end)}` : `${dateRu(b.start)}–${dateRu(b.end)}`;
-  return html`<div class="sb-bar${b.status === 'tentative' ? ' tentative' : ''}${b.mine ? ' sb-mine' : ''}" data-bar=${b.reservation_id}
-    style=${`left:${left}%;width:${right - left}%;background:${staysColor(color)};color:${textOn(staysColor(color))}`} title=${b.mine ? 'Ваша бронь · ' + tip : tip}>${text}</div>`;
+  const cls = 'sb-bar' + (b.status === 'tentative' ? ' tentative' : '') + (b.mine ? ' sb-mine' : '');
+  const style = `left:${left}%;width:${right - left}%;background:${staysColor(color)};color:${textOn(staysColor(color))}`;
+  const title = b.mine ? 'Ваша бронь · ' + tip : tip;
+  if (!names) return html`<div class=${cls} style=${style} title=${title}>${text}</div>`;
+  const label = [
+    b.main_guest || b.number || 'Бронь', b.vip_code, unit, tip,
+    b.mine && 'Ваша бронь', b.special && 'Особый гость', b.status === 'tentative' && 'Предварительная бронь',
+  ].filter(Boolean).join(' · ');
+  return html`<button type="button" class=${cls} data-bar=${b.reservation_id}
+    data-start=${b.start_pos} data-end=${b.end_pos} tabindex="-1" style=${style} title=${title}
+    data-booking-key=${[b.unit_id, b.reservation_id, b.start_pos, b.end_pos].join(':')}
+    aria-label=${label}>${text}</button>`;
+}
+
+const boardBookingButtons = root => $$('button.sb-bar', root);
+const findBoardBooking = (grid, key) => $(`button[data-booking-key="${CSS.escape(key)}"]`, grid);
+const bookingPosition = button => Number(button.dataset.start);
+
+function nextBoardBooking(grid, current, key) {
+  const row = current.closest('[data-unit-row]');
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    const bookings = boardBookingButtons(row).sort((a, b) => bookingPosition(a) - bookingPosition(b));
+    return bookings[bookings.indexOf(current) + (key === 'ArrowLeft' ? -1 : 1)];
+  }
+  const rows = $$('[data-unit-row]', grid).filter(row => boardBookingButtons(row).length);
+  const adjacent = rows[rows.indexOf(row) + (key === 'ArrowUp' ? -1 : 1)];
+  if (!adjacent) return;
+  const date = bookingPosition(current);
+  const distance = button => Math.max(bookingPosition(button) - date, date - Number(button.dataset.end), 0);
+  return boardBookingButtons(adjacent).sort((a, b) => distance(a) - distance(b) ||
+    Math.abs(bookingPosition(a) - date) - Math.abs(bookingPosition(b) - date))[0];
 }
 
 /* Цвет блока — по его номеру из небольшой палитры (в БД цвета нет); полосы блока пунктиром и не
@@ -282,6 +311,21 @@ function blockBarTemplate(b, base, span) {
   const hue = STAYS_BLOCK_HUES[b.block_id % STAYS_BLOCK_HUES.length];
   return html`<div class="sb-block" data-block=${b.block_id} data-slot=${b.slot} draggable="false"
     style=${`left:${left}%;width:${right - left}%;--bh:${hue}`} title=${(b.title || 'Блок') + ' · ' + dateRu(b.start) + '–' + dateRu(b.end)}>${b.title || 'Блок'}</div>`;
+}
+
+function showBoardBooking(grid, booking) {
+  booking.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const viewport = grid.closest('.content');
+  const toolbar = $('.sb-toolbar:not(.sf-bar, .sf-panel)', grid.parentElement);
+  const tabbar = $('#tabbar');
+  const bounds = viewport.getBoundingClientRect();
+  const top = Math.max(bounds.top, toolbar.getBoundingClientRect().bottom);
+  const bottom = tabbar.getClientRects().length
+    ? Math.min(bounds.bottom, tabbar.getBoundingClientRect().top)
+    : bounds.bottom;
+  const strip = booking.getBoundingClientRect();
+  if (strip.top < top) viewport.scrollTop += strip.top - top;
+  else if (strip.bottom > bottom) viewport.scrollTop += strip.bottom - bottom;
 }
 
 async function renderUnitsBoard(body) {
@@ -309,9 +353,34 @@ async function renderUnitsBoard(body) {
   const rerender = () => renderUnitsBoard(body);
   const st = staysState.sort;
   const canPrint = () => fresh() && (!names || $('#sf-q', body)?.value.trim() === filters.q.trim());
+  const gridFocus = (grid, booking) => {
+    const previous = $('button.sb-bar[tabindex="0"]', grid);
+    if (previous && previous !== booking) previous.tabIndex = -1;
+    if (booking) booking.tabIndex = 0;
+    grid.tabIndex = booking ? -1 : 0;
+  };
   const draw = () => {
+    const previous = $('.sb-grid button.sb-bar[tabindex="0"]', body);
+    const bookingKey = previous?.dataset.bookingKey;
+    const hadFocus = !!previous && document.activeElement === previous;
     render(unitsTemplate(), mount(body));
+    const grid = $('.sb-grid', body);
+    const booking = (bookingKey && findBoardBooking(grid, bookingKey)) || boardBookingButtons(grid)[0];
+    gridFocus(grid, booking);
+    if (hadFocus && document.activeElement !== (booking || grid)) (booking || grid).focus();
     setExportDisabled(!canPrint());
+  };
+  const gridKey = event => {
+    const current = event.target.closest('button.sb-bar');
+    if (!current || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    nextBoardBooking(event.currentTarget, current, event.key)?.focus();
+  };
+  const onGridFocus = event => {
+    const booking = event.target.closest('button.sb-bar');
+    if (!booking) return;
+    gridFocus(event.currentTarget, booking);
+    showBoardBooking(event.currentTarget, booking);
   };
   const exportPath = (format, forPrint = false) => {
     const params = new URLSearchParams(boardParams);
@@ -337,6 +406,7 @@ async function renderUnitsBoard(body) {
     downloadBlob('/api/stays/export?' + new URLSearchParams({ first, last, kind }), `shakhmatka_${kind}_${first}.xlsx`);
   };
   /* сетка — одним обработчиком: строк до 440, и они перерисовываются при сортировке */
+  let openCardGeneration = 0;
   const gridClick = e => {
     const sec = e.target.closest('[data-sec]');
     if (sec) {
@@ -348,7 +418,16 @@ async function renderUnitsBoard(body) {
     const blk = e.target.closest('[data-block]');
     if (blk) { openBlockCard(Number(blk.dataset.block), rerender); return; }
     const bar = e.target.closest('[data-bar]');
-    if (bar) { if (names) openReservationCard(Number(bar.dataset.bar), rerender); return; }
+    if (bar) {
+      const generation = ++openCardGeneration;
+      const key = bar.dataset.bookingKey;
+      const returnFocusTo = () => findBoardBooking(body, key);
+      const isCurrent = () => generation === openCardGeneration && fresh() && returnFocusTo() &&
+        state.view === 'stays' && staysState.tab === 'units';
+      openReservationCard(Number(bar.dataset.bar), rerender, { isCurrent, returnFocusTo })
+        .catch(error => { if (isCurrent()) toast(error.message, 'err'); });
+      return;
+    }
     if (!can('stays.edit')) return;
     /* блок / OOO: клик по объекту — новый, по полосе блока — правка или удаление */
     const hold = e.target.closest('[data-hold]');
@@ -376,7 +455,8 @@ async function renderUnitsBoard(body) {
     </div>
     ${staysFilterView(fund, rerender, { people: names, onSearchInput: disablePrint })}
     ${data.warnings.length ? html`<div class="dict-banner gold"><span>⚠</span><span>${data.warnings.map((w, i) => html`${i ? html`<br>` : nothing}${w.text}`)}</span></div>` : nothing}
-    <div class="sb-grid" tabindex="0" style=${`--days:${data.days.length}`} @click=${gridClick}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
+    <div class="sb-grid" role="group" tabindex="0" style=${`--days:${data.days.length}`} aria-label="Шахматка объектов"
+      @click=${gridClick} @keydown=${gridKey} @focusin=${onGridFocus}>${gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names)}</div>
     ${(byUnit.none || []).length ? html`<div class="panel"><h3 class="panel-title">Не распределено</h3>${byUnit.none.map(b =>
       html`<div class="sb-unassigned${b.overbooked ? ' overbooked' : ''}" data-bar=${b.reservation_id}
         @click=${names ? () => openReservationCard(b.reservation_id, rerender) : nothing}>${b.overbooked ? html`<span class="badge danger">овербукинг</span> ` : nothing}${names ? (b.number + ' · ' + (b.main_guest || '')) : 'бронь'} · ${dateRu(b.start)}–${dateRu(b.end)}</div>`)}</div>` : nothing}
@@ -426,7 +506,7 @@ function gridTemplate(data, fund, byUnit, holdsBy, blocksBy, names) {
           return html`<div class="sb-hold ${h.kind}" data-hold=${h.id} style=${`left:${l}%;width:${r - l}%`} title=${tip + (h.title ? ' · ' + h.title : '')}>${h.title || 'OOO'}</div>`;
         })}
         ${(blocksBy[u.unit_id] || []).map(b => blockBarTemplate(b, base, span))}
-        ${(byUnit[u.unit_id] || []).map(b => barTemplate(b, base, span, names))}
+        ${(byUnit[u.unit_id] || []).map(b => barTemplate(b, base, span, names, u.label))}
       </div></div>`;
   };
   const out = [];
@@ -461,9 +541,10 @@ function staysEscortTitle(card) {
 }
 
 /* ─────────────── Карточка брони ─────────────── */
-export async function openReservationCard(rid, onChanged) {
+export async function openReservationCard(rid, onChanged, { isCurrent = () => true, returnFocusTo } = {}) {
   const [card, history] = await Promise.all([
     api(`/api/stays/reservations/${rid}/card`), api(`/api/stays/reservations/${rid}/history`)]);
+  if (!isCurrent()) return;
   const role = { main: 'главный', guest: 'проживает' };
   /* батлер в своей брони (card.mine): карточки гостей (stays.mine) и «Изменить» (stays.mine_res_edit) —
      как в «Моих гостях»; назначения, статус и совместное проживание — только stays.edit / stays.assign */
@@ -473,7 +554,7 @@ export async function openReservationCard(rid, onChanged) {
     html`${i ? html`<br>` : nothing}${k}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
   const relatives = relativesView;
   openModal({
-    title: `Бронь ${card.number || '#' + card.id}`, wide: true,
+    title: `Бронь ${card.number || '#' + card.id}`, wide: true, returnFocusTo,
     subtitle: `${card.status_title} · ${dateRu(card.check_in)}–${dateRu(card.check_out)}`,
     body: html`${card.upgrade ? html`<p><span class="badge muted">${card.upgrade}</span></p>` : nothing}
       <div class="grid-2">
