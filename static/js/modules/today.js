@@ -10,10 +10,11 @@
    ══════════════════════════════════════════════════════════════════ */
 import { can, navigate, poll, registerModule } from '../app.js';
 import {
-  $, api, authContextIsCurrent, authContextSnapshot, hhmm, loadGeneration, MONTHS_GEN, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
+  $, api, authContextIsCurrent, authContextSnapshot, dateRu, hhmm, loadGeneration, MONTHS_GEN, openModal, serverShiftMs, state, syncServerClock, toast, todayISO, WD,
 } from '../core.js';
 import { html, mount, nothing, render } from '../ui/html.js';
 import { openOtNoteModal } from './me.js';
+import { openReservationCard } from './stays.js';
 
 registerModule({ views: { today: loadToday } });
 
@@ -47,7 +48,7 @@ async function loadToday() {
   };
   const blocks = Object.keys(paths).filter(key => paths[key]);
   const errors = new Set(), pending = new Set();
-  const view = { busy: false, statusRevision: 0, current, blocks, errors, pending, refresh };
+  const view = { busy: false, statusRevision: 0, cardRequest: 0, current, blocks, errors, pending, refresh };
 
   async function read(key) {
     const revision = view.statusRevision;
@@ -81,7 +82,11 @@ function draw(view) {
   if (!host) return;
   const previous = document.activeElement;
   const target = host.contains(previous) && previous.dataset.todayRetry;
+  const reservation = host.contains(previous) && previous.dataset.reservation;
   render(screen(view), mount(host));
+  if (reservation && document.activeElement?.dataset.reservation !== reservation) {
+    (bookingTrigger(reservation) || bookingFallback())?.focus();
+  }
   if (target && !previous.isConnected && document.activeElement === document.body) {
     const recovered = $(`[data-today-ready="${target}"]`, host) || $('[data-today-retry]', host) || $('.today-hello', host);
     recovered?.focus({ preventScroll: true });
@@ -205,13 +210,47 @@ function resNotes(r) {
   return [logisticsLine(r), r.note, ...prefs.slice(0, 2)].filter(Boolean).join('. ');
 }
 
-function resCard(r, today, urgent = false) {
+const bookingTrigger = id => $(`#view-today [data-reservation="${CSS.escape(String(id))}"]`);
+const bookingFallback = () => $('#view-today [data-today-ready="mine"]') ||
+  $('#view-today [data-today-retry="mine"]') || $('#view-today .today-hello');
+
+function openTodayBooking(view, r) {
+  if (view.pendingCard === r.reservation_id) return;
+  const returnFocusTo = () => bookingTrigger(r.reservation_id) || bookingFallback();
+  const request = ++view.cardRequest;
+  const isCurrent = () => {
+    const card = bookingTrigger(r.reservation_id);
+    return view.current() && request === view.cardRequest && card && !card.closest('[inert]');
+  };
+  if (!isCurrent()) return;
+  if (!can('stays.view')) {
+    openModal({ title: `Бронь ${r.number || '#' + r.reservation_id}`, returnFocusTo,
+      subtitle: `${r.unit || 'Без объекта'} · ${dateRu(r.check_in)}–${dateRu(r.check_out)}`,
+      body: html`<p>${r.guests.map(guest => guest.name).join(', ')}</p>${resNotes(r) ? html`<p>${resNotes(r)}</p>` : nothing}`,
+    });
+    return;
+  }
+  view.pendingCard = r.reservation_id;
+  draw(view);
+  openReservationCard(r.reservation_id, () => view.refresh(), { isCurrent, returnFocusTo, silent: true })
+    .catch(() => { if (isCurrent()) toast('Не удалось открыть бронь. Попробуйте ещё раз.', 'err'); })
+    .finally(() => {
+      if (request !== view.cardRequest) return;
+      view.pendingCard = null;
+      if (view.current()) draw(view);
+    });
+}
+
+function resCard(view, r, today, urgent = false) {
   const tag = resTag(r, today);
   const soon = r.guests.flatMap(g => g.special_dates_soon || []);
-  return html`<button class="today-card ${urgent ? 'urgent' : ''}" data-reservation=${r.reservation_id} @click=${() => navigate('mystays')}>
+  const opening = view.pendingCard === r.reservation_id;
+  return html`<button class="today-card ${urgent ? 'urgent' : ''}" data-reservation=${r.reservation_id}
+    aria-busy=${opening ? 'true' : nothing} @click=${() => openTodayBooking(view, r)}>
     <span class="today-card-top"><span class="badge ${tag.cls}">${tag.text}</span><span class="today-unit">${r.unit || 'без объекта'}</span></span>
     <span class="today-name">${leadName(r)}</span>
     ${resNotes(r) ? html`<span class="today-text">${resNotes(r)}</span>` : nothing}
+    ${opening ? html`<span class="today-text">Открываем бронь…</span>` : nothing}
     ${soon.length ? html`<span class="today-soon">${soon[0].what} — ${soon[0].date.slice(8, 10)}.${soon[0].date.slice(5, 7)}</span>` : nothing}
   </button>`;
 }
@@ -232,9 +271,9 @@ function mineBlocks(view) {
       <div class="stat"><div class="v" data-stat="out">${departures.length}</div><div class="k">выезд</div></div>
     </div>
     <h3 class="today-h">Сейчас важно</h3>
-    ${important ? resCard(important, today, true) : html`<div class="alert info" data-empty="important">Срочного нет: заездов и выездов на сегодня нет.</div>`}
+    ${important ? resCard(view, important, today, true) : html`<div class="alert info" data-empty="important">Срочного нет: заездов и выездов на сегодня нет.</div>`}
     <h3 class="today-h" data-today-ready="mine" tabindex="-1">Мои гости</h3>
-    ${rest.length ? rest.map(r => resCard(r, today))
+    ${rest.length ? rest.map(r => resCard(view, r, today))
       : html`<div class="empty" data-empty="guests">${important ? 'Других гостей на сегодня нет' : 'Сегодня вы никого не ведёте'}</div>`}
     <div class="today-more-link"><button class="btn btn-sm btn-ghost" @click=${() => navigate('mystays')}>Все мои гости</button></div>`;
 }

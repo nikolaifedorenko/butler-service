@@ -146,12 +146,13 @@
   display: none; z-index: 45;
 }
 .tabbar button {
-  flex: 1; background: none; border: none; color: var(--muted-2); cursor: pointer;
+  grid-row: 1; min-width: 0; padding-inline: 2px; background: none; border: none; color: var(--muted-2); cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  font-size: 10px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
+  font-size: 10px; font-weight: 700; line-height: 1.15;
 }
+.tabbar button span { max-width: 100%; overflow-wrap: anywhere; }
 .tabbar button.active { color: var(--brand-fg); }
-.tabbar button svg { width: 22px; height: 22px; }
+.tabbar button svg { flex: none; width: 22px; height: 22px; }
 
 /* Fixed action menus are measured after opening; cap their real box to the viewport. */
 .menu-pop { max-height: min(70vh, calc(100vh - 16px)); }
@@ -487,13 +488,11 @@ table.data .who small { display: block; color: var(--muted); font-weight: 400; f
 
 @media (max-width: 860px) {
   .only-mobile { display: flex !important; }
-  .sidenav {
-    position: fixed; top: var(--head-h); bottom: 0; left: 0; z-index: 60; width: 250px;
-    transform: translateX(-105%); transition: transform var(--dur-2) var(--ease); box-shadow: var(--shadow-lg);
-  }
-  .sidenav.open { transform: none; }
+  .sidenav { display: none; }
   .content { padding: 14px 12px calc(var(--tab-h) + 26px); }
-  .tabbar { display: flex; }
+  .tabbar.only-mobile { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  #mobile-sections { grid-column: 5; }
+  .mobile-catalog { display: grid; gap: var(--space-1); }
   .grid-scroll { max-height: calc(100dvh - 300px); }
   table.sched th.corner { width: 138px; }
   table.sched th.corner, table.sched td.name-cell { min-width: 138px; max-width: 138px; padding: 7px 8px; }
