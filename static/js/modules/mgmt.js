@@ -30,7 +30,7 @@ export async function loadMgmt() {
   }
   if (!fresh()) return;          // пока ждали ответ, перелистнули период
   state.mgmt = d;
-  if (d.granularity === 'half_month' && !state.mgmtHalf) state.mgmtHalf = d.half || 1;
+  state.mgmtHalf = d.granularity === 'half_month' ? d.half || 1 : null;
   screen.loading = false;
   draw();
 }
@@ -45,7 +45,7 @@ function shiftPeriod(delta) {
   let m = state.month + delta, y = state.year;
   if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
   state.month = m; state.year = y;
-  if (state.mgmtHalf) state.mgmtHalf = delta > 0 ? 1 : 2;
+  state.mgmtHalf = delta > 0 ? 1 : 2;
   return loadMgmt();
 }
 
@@ -55,10 +55,32 @@ function draw() {
 }
 
 function periodLabel(d) {
-  if (!d) return '—';
+  if (!d) return `${MONTHS[state.month - 1]} ${state.year}`;
   return d.granularity === 'half_month'
     ? `${MONTHS[d.month - 1]} ${d.year} · ${d.period.start.slice(8)}–${d.period.end.slice(8)}`
     : `${MONTHS[d.month - 1]} ${d.year}`;
+}
+
+function openPreviousPeriod(previous) {
+  state.year = previous.year;
+  state.month = previous.month;
+  state.mgmtHalf = previous.half;
+  loadMgmt();
+  $('#ut-label')?.focus();
+}
+
+function blockingStatus(d) {
+  if (!d?.blocking) return nothing;
+  const { previous_period: previous, opening_bank_missing: openingBank } = d.blocking;
+  if (!previous && !openingBank) return nothing;
+  return html`<div class="alert warn mgmt-blocking" role="status">
+    ${previous ? html`<div><strong>Не закрыт предыдущий период</strong>
+      <div>${dateRu(previous.start)}–${dateRu(previous.end)}.</div>
+      ${d.can_close ? nothing : html`<div>Обратитесь к руководителю, который закрывает табель.</div>`}</div>` : nothing}
+    ${previous && d.can_close ? html`<button class="btn btn-sm" @click=${() => openPreviousPeriod(previous)}>
+      Открыть предыдущий период</button>` : nothing}
+    ${openingBank ? html`<div>У некоторых сотрудников не указан начальный остаток часов. Обратитесь к администратору.</div>` : nothing}
+  </div>`;
 }
 
 function layerTemplate() {
@@ -69,7 +91,7 @@ function layerTemplate() {
         размещения; недостача гасится банком и каскадом при закрытии периода</div></div>
       <div class="spacer"></div>
       <div class="month-nav"><button id="ut-prev" @click=${() => shiftPeriod(-1)}>‹</button>
-        <div class="label" id="ut-label">${periodLabel(d)}</div>
+        <div class="label" id="ut-label" tabindex="-1">${periodLabel(d)}</div>
         <button id="ut-next" @click=${() => shiftPeriod(1)}>›</button></div>
       <button class="btn btn-sm btn-primary" id="ut-close" style=${d?.can_close ? '' : 'display:none'}
         @click=${() => mgmtAction('close')}>Закрыть период</button>
@@ -77,6 +99,7 @@ function layerTemplate() {
         @click=${() => mgmtAction('recalculate')}>Пересчитать</button>
       <button class="btn btn-sm btn-ghost" id="ut-xlsx"
         @click=${() => downloadBlob(`/api/mgmt/xlsx?${query()}`, 'upr_tabel.xlsx')}>Excel</button>
+      ${blockingStatus(d)}
     </div>
     <div id="ut-body">${bodyTemplate()}</div>`;
 }
@@ -113,8 +136,10 @@ function dayCell(r, d, day, cardByDay, flagsByDay, outDays) {
 
 function employeeRow(r, d) {
   if (r.error) {
+    const message = r.error_code === 'PREVIOUS_PERIOD_NOT_CLOSED' && d.blocking?.previous_period
+      ? 'Ожидает закрытия' : r.error;
     return html`<tr><td class="who">${r.employee.short_name}<small>${r.employee.group}</small></td>
-      <td colspan=${d.days.length + d.tariffs.length + 3} style="color:var(--danger)">${r.error}</td>
+      <td colspan=${d.days.length + d.tariffs.length + 3} style="color:var(--danger)">${message}</td>
       <td>${stateBadge(r)}</td></tr>`;
   }
   const flagsByDay = {};

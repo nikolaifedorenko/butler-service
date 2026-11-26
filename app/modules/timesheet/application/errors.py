@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 
 class ApplicationError(Exception):
@@ -19,11 +20,18 @@ class PeriodOutsideEmploymentError(ApplicationError):
         super().__init__(f"{employee_id}: period {period.start}..{period.end} outside employment")
 
 
+PreviousPeriodReason = Literal["previous", "opening_bank", "employment_gap"]
+
+
 class PreviousPeriodNotClosedError(ApplicationError):
     """RUL-SEQUENTIAL-CLOSING / RUL-VIEW-AFTER-PREVIOUS: предыдущий период не закрыт
     и начальный банк не посеян (v7/R26, R37)."""
 
     code = "PREVIOUS_PERIOD_NOT_CLOSED"
+
+    def __init__(self, message: str, *, reason: PreviousPeriodReason = "previous"):
+        self.reason = reason
+        super().__init__(message)
 
 
 class PeriodAlreadyClosedError(ApplicationError):

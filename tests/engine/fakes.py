@@ -273,7 +273,7 @@ class FakeStore:
         next_closed = any(row["period"].start > period.end for row in rows)
         return PeriodState(closed=self._closed(employee_id, period.start),
                            previous_closed=previous_closed, next_closed=next_closed,
-                           opening_bank_set=first and seed)
+                           opening_bank_set=first and seed, has_earlier_closing=not first)
 
     def _seed_dates(self, employee_id):
         return [(date, reason) for emp, date, _m, reason in self.db.adjustments

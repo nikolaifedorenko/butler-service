@@ -56,7 +56,8 @@ class SqlSettlementStore:
             closed=self._row(employee_id, period) is not None,
             previous_closed=previous_closing(self.db, emp, period) is not None,
             next_closed=later is not None,
-            opening_bank_set=first and opening_seed_set(self.db, employee_id, period))
+            opening_bank_set=first and opening_seed_set(self.db, employee_id, period),
+            has_earlier_closing=not first)
 
     def lock_marks(self, employee_ids: Sequence[str],
                    period: Period) -> dict[str, tuple[bool, bool]]:

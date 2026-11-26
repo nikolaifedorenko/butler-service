@@ -97,6 +97,78 @@ def test_view_rejected_when_previous_not_closed(admin):
     row = data["rows"][0]
     assert row["error"] is not None
     assert "предыдущий период" in row["error"]
+    assert row["error_code"] == "PREVIOUS_PERIOD_NOT_CLOSED"
+    assert data["blocking"] == {
+        "previous_period": {"year": PREV.year, "month": PREV.month, "half": None,
+                            "start": PREV.isoformat(), "end": PREV_END.isoformat()},
+        "opening_bank_missing": 0,
+    }
+
+
+def test_first_period_requires_opening_balance_instead_of_another_period(admin):
+    employee = admin.post("/api/employees", json={
+        "full_name": "Новиков Новый Новикович", "position": "Батлер",
+        "hired_at": TODAY.isoformat(), "schedule_group": "Смена 1"})
+    assert employee.status_code == 200, employee.text
+    data = admin.get("/api/mgmt", params={"year": TODAY.year, "month": TODAY.month,
+                                          "employee_id": employee.json()["id"]}).json()
+    row = data["rows"][0]
+    assert row["error_code"] == "OPENING_BANK_REQUIRED"
+    assert data["blocking"] == {"previous_period": None, "opening_bank_missing": 1}
+
+
+def test_employment_gap_after_closing_has_its_own_error(admin, db):
+    from app.modules.people.application import EmploymentPeriod
+    from app.modules.timesheet.adapters.orm import PeriodClosing
+
+    earlier_end = PREV - dt.timedelta(days=1)
+    earlier_start = earlier_end.replace(day=1)
+    employee = admin.post("/api/employees", json={
+        "full_name": "Возвратов Повторный Возвратович", "position": "Батлер",
+        "hired_at": TODAY.isoformat(), "schedule_group": "Смена 1"})
+    assert employee.status_code == 200, employee.text
+    eid = employee.json()["id"]
+    db.add_all([
+        EmploymentPeriod(employee_id=eid, start_date=earlier_start, end_date=earlier_end),
+        PeriodClosing(employee_id=eid, period_start=earlier_start, period_end=earlier_end),
+    ])
+    db.commit()
+    data = admin.get("/api/mgmt", params={"year": TODAY.year, "month": TODAY.month, "employee_id": eid}).json()
+    assert data["rows"][0]["error_code"] == "EMPLOYMENT_CHAIN_GAP"
+    assert data["blocking"] == {"previous_period": None, "opening_bank_missing": 0}
+
+
+@pytest.mark.parametrize(("current", "granularity", "expected"), [
+    ("2026-01-01", "half_month", (2025, 12, 2, "2025-12-16", "2025-12-31")),
+    ("2026-01-01", "month", (2025, 12, None, "2025-12-01", "2025-12-31")),
+    ("2026-01-16", "half_month", (2026, 1, 1, "2026-01-01", "2026-01-15")),
+])
+def test_blocking_period_uses_settings_for_the_previous_date(current, granularity, expected):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from app.modules.timesheet.application.mgmt_screen import _blocking_predecessor
+    from app.modules.timesheet.domain.types.entities import Period
+
+    start = dt.date.fromisoformat(current)
+    settings = Mock()
+    settings.load.return_value = SimpleNamespace(period_granularity=granularity)
+    previous = _blocking_predecessor(Period(start, start), settings)
+    assert tuple(previous[key] for key in ("year", "month", "half", "start", "end")) == expected
+    assert settings.load.call_args.args[0].start == (start - dt.timedelta(days=1)).replace(day=1)
+
+
+def test_invalid_historical_settings_do_not_interrupt_current_table():
+    from unittest.mock import Mock
+
+    from app.modules.timesheet.application.mgmt_screen import _blocking_predecessor
+    from app.modules.timesheet.domain.types.entities import Period
+    from app.modules.timesheet.domain.types.errors import ConfigError
+
+    settings = Mock()
+    settings.load.side_effect = ConfigError([("INVALID_SETTING", {})])
+    day = dt.date(2026, 1, 1)
+    assert _blocking_predecessor(Period(day, day), settings) is None
 
 
 def test_seed_only_first_period(admin, emp):

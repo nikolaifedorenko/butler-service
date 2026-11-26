@@ -32,8 +32,8 @@ from ..domain.types.errors import DomainError
 from . import exports
 from .close_period import check_close, close_period
 from .engine_common import emp_brief, engine_ports, now_utc, period_employees
-from .errors import ApplicationError
-from .months import half_month_period, month_period
+from .errors import ApplicationError, PreviousPeriodNotClosedError
+from .months import half_month_period, month_period, period_containing
 from .period_params import ensure_period
 from .recalculate import check_recalculate, recalculate
 from .texts import error_text
@@ -56,7 +56,7 @@ _NOT_SAVED = {"revision": None, "closed_by": None, "closed_at": None, "versions"
 
 def _row(db: Session, ports, emp, period: Period, now: dt.datetime, detail: bool) -> dict:
     eid = str(emp.id)
-    base = {**dict.fromkeys(_ROW_KEYS), "employee": emp_brief(emp), "error": None}
+    base = {**dict.fromkeys(_ROW_KEYS), "employee": emp_brief(emp), "error": None, "error_code": None}
     try:
         state = ports.store.period_state(eid, period)
         view = view_period(eid, period, now, ports)
@@ -74,6 +74,13 @@ def _row(db: Session, ports, emp, period: Period, now: dt.datetime, detail: bool
                           and (state.previous_closed or state.opening_bank_set) and can_close_now,
                           "can_recalculate": state.closed and not state.next_closed},
                 "source": "saved" if state.closed else "view"}
+    except PreviousPeriodNotClosedError as exc:
+        if exc.reason == "opening_bank":
+            return {**base, "error": "Отсутствует начальный остаток часов", "error_code": "OPENING_BANK_REQUIRED"}
+        if exc.reason == "employment_gap":
+            return {**base, "error": "Проверьте данные после повторного приёма с администратором",
+                    "error_code": "EMPLOYMENT_CHAIN_GAP"}
+        return {**base, "error": error_text(exc), "error_code": exc.code}
     except (DomainError, ApplicationError, ValueError) as exc:
         # отказ расчёта — не ошибка запроса: текст идёт в строку сотрудника
         return {**base, "error": error_text(exc)}
@@ -81,6 +88,20 @@ def _row(db: Session, ports, emp, period: Period, now: dt.datetime, detail: bool
 
 def _effective_end(period: Period, employment: Employment) -> dt.date:
     return period.end if employment.end is None else min(period.end, employment.end)
+
+
+def _blocking_predecessor(period: Period, settings) -> dict | None:
+    if period.start == dt.date.min:
+        return None
+    day = period.start - dt.timedelta(days=1)
+    try:
+        granularity = settings.load(month_period(day.year, day.month)).period_granularity
+    except (DomainError, ValueError):
+        return None
+    previous = period_containing(day, granularity)
+    half = (1 if day.day <= 15 else 2) if granularity == GRANULARITY_HALF_MONTH else None
+    return {"year": day.year, "month": day.month, "half": half,
+            "start": previous.start.isoformat(), "end": previous.end.isoformat()}
 
 
 def _context(db: Session, principal: Optional[Principal], year: int, month: int,
@@ -115,6 +136,11 @@ def table(db: Session, principal: Principal, year: int, month: int, half: Option
         raise Conflict(str(exc)) from exc
     rows = [_row(db, ports, e, period, now, detail or bool(employee_id)) for e in emps]
     perms = principal_permissions(db, principal)
+    previous_needed = any(r["error_code"] == PreviousPeriodNotClosedError.code for r in rows)
+    blocking = {
+        "previous_period": _blocking_predecessor(period, ports.settings) if previous_needed else None,
+        "opening_bank_missing": sum(r["error_code"] == "OPENING_BANK_REQUIRED" for r in rows),
+    }
     return {"year": year, "month": month, "half": half, "granularity": granularity,
             "period": {"start": period.start.isoformat(), "end": period.end.isoformat()},
             "days": [(period.start + dt.timedelta(days=i)).isoformat()
@@ -122,7 +148,7 @@ def table(db: Session, principal: Principal, year: int, month: int, half: Option
             "tariffs": list(st.placement_order), "step_minutes": st.step_minutes,
             "settings_versions": list(st.versions), "now": now.isoformat(),
             "can_close": "mgmt.close" in perms, "can_recalculate": "mgmt.recalculate" in perms,
-            "rows": rows}
+            "blocking": blocking, "rows": rows}
 
 
 class PeriodAction(BaseModel):

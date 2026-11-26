@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import Field
 
@@ -711,10 +711,11 @@ class NullablePeriodOut(ApiModel):
 
 
 class MgmtRowOut(ApiModel):
-    """Строка сотрудника. Если расчёт отказал, заполнены только ``employee`` и ``error``."""
+    """Строка сотрудника. При отказе расчёта — сотрудник, сообщение и причина блокировки."""
 
     employee: EmployeeBriefOut
     error: Optional[str]
+    error_code: Optional[Literal["PREVIOUS_PERIOD_NOT_CLOSED", "OPENING_BANK_REQUIRED", "EMPLOYMENT_CHAIN_GAP"]]
     revision: Optional[int]                # сведения о закрытии — только у закрытого периода
     closed_by: Optional[str]
     closed_at: Optional[str]
@@ -735,6 +736,17 @@ class MgmtRowOut(ApiModel):
     source: Optional[str]                  # saved — сохранённый результат, view — живой расчёт
 
 
+class MgmtPreviousPeriodOut(PeriodOut):
+    year: int
+    month: int
+    half: Optional[Literal[1, 2]]
+
+
+class MgmtBlockingOut(ApiModel):
+    previous_period: Optional[MgmtPreviousPeriodOut]
+    opening_bank_missing: int
+
+
 class MgmtOut(ApiModel):
     year: int
     month: int
@@ -748,6 +760,7 @@ class MgmtOut(ApiModel):
     now: str
     can_close: bool
     can_recalculate: bool
+    blocking: MgmtBlockingOut
     rows: list[MgmtRowOut]
 
 
